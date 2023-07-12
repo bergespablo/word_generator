@@ -405,7 +405,7 @@ class MainApplication(tk.Frame):
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("Word File Generator")
+    root.title("Word File Generator v0.0.4")
     app = MainApplication(root)
     app.pack(side="top", fill="both", expand=True, padx=10, pady=10)
     # Call the save_data function before exiting the program
