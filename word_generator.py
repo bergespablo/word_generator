@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import filedialog, scrolledtext
 from tkinter.ttk import Combobox, Progressbar
+from typing import List
 import pandas as pd
 from docxtpl import DocxTemplate
 import threading
@@ -13,28 +14,23 @@ import webbrowser
 from scripts.create_pdf_from_docx import create_pdf_from_docx
 
 
-# Define a file name to store the data
-data_file = "config.ini"
-
-# Create a configparser object
-config = configparser.ConfigParser()
-
-# Define a function to save the data
-
-
 def save_data():
+    """Save the word file path, excel file path and output folder path in a config file
+    """
+    stop_execution.set(True)
+
     # Get the values of the file and folder paths
-    word_path = word_file.get()
-    excel_path = excel_file.get()
-    folder_path = output_folder.get()
+    word_file_path = word_file.get()
+    excel_file_path = excel_file.get()
+    output_folder_path = output_folder.get()
 
     # Create a section for the data
     config["DATA"] = {}
 
     # Set the values of the file and folder paths in the section
-    config["DATA"]["word_path"] = word_path
-    config["DATA"]["excel_path"] = excel_path
-    config["DATA"]["folder_path"] = folder_path
+    config["DATA"]["word_path"] = word_file_path
+    config["DATA"]["excel_path"] = excel_file_path
+    config["DATA"]["folder_path"] = output_folder_path
 
     # Open the data file in write mode
     with open(data_file, "w") as f:
@@ -44,10 +40,11 @@ def save_data():
     # Destroy the root window
     root.destroy()
 
-# Define a function to load the data
-
 
 def load_data():
+    """Load the word file path, excel file path and output folder path from the config file
+    """
+
     # Try to read the data file
     try:
         config.read(data_file)
@@ -62,7 +59,7 @@ def load_data():
         if os.path.exists(excel_path):
             excel_file.set(excel_path)
             excel_button_open.grid()
-            refresh_combobox_values(excel_path)
+            load_combobox(excel_path)
         if os.path.exists(folder_path):
             output_folder.set(folder_path)
             folder_button_open.grid()
@@ -72,33 +69,16 @@ def load_data():
         pass
 
 
-def load_combobox():
-    pass
-
-
-# Create a root window
-root = tk.Tk()
-root.title("Word File Generator")
-
-# Create a frame to hold the widgets
-frame = tk.Frame(root, padx=10, pady=10)
-frame.pack()
-
-# Create variables to store the file and folder paths
-word_file = tk.StringVar()
-excel_file = tk.StringVar()
-output_folder = tk.StringVar()
-
-
 # Define a function to browse for a word file
 def browse_word():
     # Use filedialog to ask for a word file
     word_path = filedialog.askopenfilename(
         filetypes=[("Word files", "*.docx")])
-    # Update the word_file variable with the selected path
-    word_file.set(word_path)
-    word_button_open.grid()
-    checkPaths()
+    if word_path:
+        # Update the word_file variable with the selected path
+        word_file.set(word_path)
+        word_button_open.grid()
+        checkPaths()
 
 # Define a function to browse for an excel file
 
@@ -107,15 +87,16 @@ def browse_excel():
     # Use filedialog to ask for an excel file
     excel_path = filedialog.askopenfilename(
         filetypes=[("Excel files", "*.xlsx")])
-    # Update the excel_file variable with the selected path
-    excel_file.set(excel_path)
-    # Populate the combobox
-    refresh_combobox_values(excel_path)
-    excel_button_open.grid()
-    checkPaths()
+    if excel_path:
+        # Update the excel_file variable with the selected path
+        excel_file.set(excel_path)
+        # Populate the combobox
+        load_combobox(excel_path)
+        excel_button_open.grid()
+        checkPaths()
 
 
-def refresh_combobox_values(excel_path):
+def load_combobox(excel_path):
     # Populate the combobox with column names from the selected Excel file
     column_names = get_excel_column_names(excel_path)
     combobox_entry['values'] = column_names
@@ -128,29 +109,40 @@ def refresh_combobox_values(excel_path):
 
 
 def browse_folder():
+    """Browse for an output folder
+    """
+
     # Use filedialog to ask for a folder
     folder_path = filedialog.askdirectory()
-    # Update the output_folder variable with the selected path
-    output_folder.set(folder_path)
-    folder_button_open.grid()
-    checkPaths()
+    if folder_path:
+        # Update the output_folder variable with the selected path
+        output_folder.set(folder_path)
+        folder_button_open.grid()
+        checkPaths()
 
 
 def checkPaths():
+    """Enable the generation button if the word file path, excel file path, and output folder path are filled 
+    """
     word_file_path = word_file.get()
     excel_file_path = excel_file.get()
-    folder_path = output_folder.get()
-    if word_file_path and excel_file_path and folder_path:
+    output_folder_path = output_folder.get()
+    if word_file_path and excel_file_path and output_folder_path:
         generate_button.configure(state='normal')
     else:
         generate_button.configure(state='disabled')
 
-# Define a function to generate word and pdf files
-
 
 def generate_word_files():
+    """Generate word and pdf files
+    """
     pythoncom.CoInitialize()
     clear_screen()
+
+    # Show stop button and hide clear button
+    stop_button.grid()
+    clear_button.grid_remove()
+
     # Get the values of the file and folder paths
     word_file_path = word_file.get()
     excel_file_path = excel_file.get()
@@ -163,9 +155,7 @@ def generate_word_files():
     # Check if the paths are valid
     if not word_file_path or not excel_file_path or not folder_path:
         # Display an error message in the log area
-        log_area.configure(state='normal')
-        log_area.insert(tk.END, "Please select valid files and folder.\n")
-        log_area.configure(state='disabled')
+        writeLog("Please select valid files and folder.")
         return
 
     # Create a word directory if it does not exist
@@ -174,13 +164,9 @@ def generate_word_files():
     if not os.path.exists(pdf_folder_path):
         os.makedirs(pdf_folder_path)
 
-    # Clear progress bar
-    pb['value'] = 0
     # Display a message in the log area that the generation is starting
-    log_area.configure(state='normal')
-    # log_area.delete(1.0, tk.END)  # clear area
-    log_area.insert(
-        tk.END, f"Generating word files from {word_file_path} and {excel_file_path} into {folder_path}...\n")
+    writeLog(
+        f"Generating word files from {word_file_path} and {excel_file_path} into {folder_path}...")
 
     # Write your logic to generate word files using the word template and the excel information
     doc = DocxTemplate(word_file_path)
@@ -189,11 +175,14 @@ def generate_word_files():
     df[all_columns] = df[all_columns].fillna('').astype(str)
 
     df.columns = df.columns.str.replace(' ', '_')
-    num_files = 0
-    num_errors = 0
-    log_area.insert(tk.END, f"------- Generation of word files ----------\n")
-
+    num_word_files = 0
+    num_word_errors = 0
+    num_pdf_files = 0
+    num_pdf_errors = 0
+    writeLog(f"\n------- Generation of files ----------")
     for index, row in df.iterrows():
+        if stop_execution.get():
+            break
         context = {**row}
         doc.render(context)
         filename = f"row_index_{index+2}"
@@ -202,37 +191,68 @@ def generate_word_files():
 
         if column_value != "":
             filename = column_value
-        pb['value'] += 100/len(df)
+        pb['value'] = 100*(index+1)/len(df)
         try:
             doc.save(f"{word_folder_path}\{filename}.docx")
-            log_area.insert(
-                tk.END, f"File '{filename}.docx' correcty generated.\n")
-            if (pdf_selected.get()):
+            writeLog(f"File '{filename}.docx' correcty generated.")
+            num_word_files = num_word_files+1
+        except:
+            writeLog(f"Error generating file '{filename}'.")
+            num_word_errors = num_word_errors+1
+        if (pdf_selected.get()):
+            try:
                 create_pdf_from_docx(
                     f"{word_folder_path}/{filename}.docx", f"{pdf_folder_path}/{filename}.pdf")
-                log_area.insert(
-                    tk.END, f"File '{filename}.pdf' correcty generated.\n")
-
-            num_files = num_files+1
-        except:
-            log_area.insert(tk.END, f"Error generating file '{filename}'.\n")
-            num_errors = num_errors+1
-        log_area.see(tk.END)
+                writeLog(f"File '{filename}.pdf' correcty generated.")
+                num_pdf_files = num_pdf_files+1
+            except:
+                writeLog(f"Error generating file '{filename}'.")
+                num_pdf_errors = num_pdf_errors+1
 
     # Display a message in the log area that the generation is done
-    log_area.insert(tk.END, f"------- Generation summary ----------\n")
-    if (num_errors > 0):
-        log_area.insert(
-            tk.END, f"Done. Generated {num_files} word files. Number of files not generated: {num_errors}\n")
-        folder_button_open.config(background='yellow')
-    else:
-        log_area.insert(tk.END, f"Done. Generated {num_files} word files.\n")
+    writeLog(f"\n------- Generation summary ----------")
+    if (num_word_errors == 0 and num_pdf_errors == 0):
         folder_button_open.config(background='#a3f590')
+    else:
+        folder_button_open.config(background='yellow')
+
+    if (num_word_files > 0):
+        writeLog(f"Number of word files generated: {num_word_files}")
+    if (num_word_errors > 0):
+        writeLog(
+            f"Number of word files not generated because of errors: {num_word_files}")
+    if (num_pdf_files > 0):
+        writeLog(f"Number of pdf files generated: {num_word_files}")
+    if (num_pdf_errors > 0):
+        writeLog(
+            f"Number of pdf files not generated because of errors: {num_word_files}")
+
+    # Hide stop button and show clear button
+    stop_button.grid_remove()
+    clear_button.grid()
+
+
+def writeLog(text: str):
+    """Write to log area
+
+    Args:
+        text (str): Text to show in log area
+    """
+    log_area.configure(state='normal')
+    log_area.insert(tk.END, text+"\n")
     log_area.see(tk.END)
     log_area.configure(state='disabled')
 
 
-def get_excel_column_names(file_path):
+def get_excel_column_names(file_path: str) -> List[str]:
+    """Get column names from excel
+
+    Args:
+        file_path (str): Path to excel file
+
+    Returns:
+        List[str]: List of column names
+    """
     try:
         df = pd.read_excel(file_path)
         return df.columns.tolist()
@@ -240,16 +260,18 @@ def get_excel_column_names(file_path):
         print(f"Error reading Excel file: {str(e)}")
         return []
 
-# Define a function to clear the log area
-
 
 def clear_screen():
+    """Clear screen: log area and progress bar
+    """
+
     # Delete all the text in the log area
     log_area.configure(state='normal')
     log_area.delete(1.0, tk.END)
     log_area.configure(state='disabled')
     pb['value'] = 0
     folder_button_open.config(background='SystemButtonFace')
+    stop_execution.set(False)
     checkPaths()
 
 
@@ -264,6 +286,32 @@ def open_excel_file():
 def open_word_file():
     webbrowser.open(word_file.get())
 
+
+def stop_generation():
+    stop_execution.set(True)
+
+
+# Define a file name to store the data
+data_file = "config.ini"
+
+# Create a configparser object
+config = configparser.ConfigParser()
+
+# Create a root window
+root = tk.Tk()
+root.title("Word File Generator")
+
+# Create a frame to hold the widgets
+frame = tk.Frame(root, padx=10, pady=10)
+frame.pack()
+
+# Create variables to store the file and folder paths
+word_file = tk.StringVar()
+excel_file = tk.StringVar()
+output_folder = tk.StringVar()
+
+# Stop generation
+stop_execution = tk.BooleanVar(value=False)
 
 # Create labels and entries for the file and folder fields
 word_label = tk.Label(frame, text="Word template file:")
@@ -345,6 +393,12 @@ pb.grid(row=7, columnspan=4)
 # Create a button to clear the log area
 clear_button = tk.Button(frame, text="Clear", command=clear_screen)
 clear_button.grid(row=8, columnspan=4)
+
+# Create a button to clear the log area
+stop_button = tk.Button(frame, text="Stop generation",
+                        command=stop_generation)
+stop_button.grid(row=9, columnspan=4)
+stop_button.grid_remove()  # Initially invisible
 
 # Call the load_data function at the beginning of the program
 load_data()
