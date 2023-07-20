@@ -1,4 +1,7 @@
 # Import tkinter and other modules
+import contextlib
+import os
+import re
 import tkinter as tk
 from tkinter import filedialog, scrolledtext
 from tkinter.ttk import Combobox, Progressbar
@@ -7,14 +10,14 @@ import pandas as pd
 from docxtpl import DocxTemplate
 import threading
 import configparser
-import os
-import re
 import pythoncom
 import webbrowser
 from scripts.create_pdf_from_docx import create_pdf_from_docx
 
 
 class MainApplication(tk.Frame):
+    """A GUI application that generates word and pdf files from a template word file and an excel file"""
+
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
@@ -86,7 +89,7 @@ class MainApplication(tk.Frame):
         self.checkbutton_label.grid(row=4, column=0, sticky=tk.W)
         self.checkbuttonframe = tk.Frame(self, border=2)
         self.checkbuttonframe.grid(
-            row=4, column=1, columnspan=3, sticky=tk.W, padx=5)
+            row=4, column=1, columnspan=3, sticky=tk.W)
         self.word_selected = tk.BooleanVar()
         self.pdf_selected = tk.BooleanVar()
         self.cb_word = tk.Checkbutton(self.checkbuttonframe, text="word",
@@ -99,7 +102,7 @@ class MainApplication(tk.Frame):
 
         # Create a button to generate files
         self.generate_button = tk.Button(self, text="Generate files",
-                                         command=lambda: threading.Thread(target=self.generate_word_files).start())
+                                         command=lambda: threading.Thread(target=self.generate_files).start())
         self.generate_button.grid(row=5, columnspan=4, pady=10)
         self.generate_button.configure(state='disabled')
 
@@ -138,12 +141,11 @@ class MainApplication(tk.Frame):
         output_folder_path = self.output_folder.get()
 
         # Create a section for the data
-        self.config["DATA"] = {}
-
-        # Set the values of the file and folder paths in the section
-        self.config["DATA"]["word_path"] = word_file_path
-        self.config["DATA"]["excel_path"] = excel_file_path
-        self.config["DATA"]["folder_path"] = output_folder_path
+        self.config["DATA"] = {
+            "word_path": word_file_path,
+            "excel_path": excel_file_path,
+            "folder_path": output_folder_path,
+        }
 
         # Open the data file in write mode
         with open(self.data_file, "w") as f:
@@ -158,7 +160,7 @@ class MainApplication(tk.Frame):
         """
 
         # Try to read the data file
-        try:
+        with contextlib.suppress(Exception):
             self.config.read(self.data_file)
             # Get the values of the file and folder paths from the section
             word_path = self.config["DATA"]["word_path"]
@@ -176,29 +178,22 @@ class MainApplication(tk.Frame):
                 self.output_folder.set(folder_path)
                 self.folder_button_open.grid()
             self.checkPaths()
-        # If the file does not exist or is corrupted, do nothing
-        except:
-            pass
-
-    # Define a function to browse for a word file
 
     def browse_word(self):
-        # Use filedialog to ask for a word file
-        word_path = filedialog.askopenfilename(
-            filetypes=[("Word files", "*.docx")])
-        if word_path:
+        if word_path := filedialog.askopenfilename(
+            filetypes=[("Word files", "*.docx")]
+        ):
             # Update the word_file variable with the selected path
             self.word_file.set(word_path)
             self.word_button_open.grid()
             self.checkPaths()
 
-    # Define a function to browse for an excel file
-
     def browse_excel(self):
-        # Use filedialog to ask for an excel file
-        excel_path = filedialog.askopenfilename(
-            filetypes=[("Excel files", "*.xlsx")])
-        if excel_path:
+        """ Use filedialog to ask for an excel file
+        """
+        if excel_path := filedialog.askopenfilename(
+            filetypes=[("Excel files", "*.xlsx")]
+        ):
             # Update the excel_file variable with the selected path
             self.excel_file.set(excel_path)
             # Populate the combobox
@@ -207,6 +202,11 @@ class MainApplication(tk.Frame):
             self.checkPaths()
 
     def load_combobox(self, excel_path):
+        """ Load the column names of the excel file as values for the combobox
+
+        Args:
+            excel_path (file): The input excel file
+        """
         # Populate the combobox with column names from the selected Excel file
         column_names = self.get_excel_column_names(excel_path)
         self.combobox_entry['values'] = column_names
@@ -215,15 +215,11 @@ class MainApplication(tk.Frame):
         self.combobox_label.grid()
         self.combobox_entry.grid()
 
-    # Define a function to browse for an output folder
-
     def browse_folder(self):
         """Browse for an output folder
         """
 
-        # Use filedialog to ask for a folder
-        folder_path = filedialog.askdirectory()
-        if folder_path:
+        if folder_path := filedialog.askdirectory():
             # Update the output_folder variable with the selected path
             self.output_folder.set(folder_path)
             self.folder_button_open.grid()
@@ -235,12 +231,12 @@ class MainApplication(tk.Frame):
         word_file_path = self.word_file.get()
         excel_file_path = self.excel_file.get()
         output_folder_path = self.output_folder.get()
-        if word_file_path and excel_file_path and output_folder_path:
+        if os.path.exists(word_file_path) and os.path.exists(excel_file_path) and os.path.exists(output_folder_path):
             self.generate_button.configure(state='normal')
         else:
             self.generate_button.configure(state='disabled')
 
-    def generate_word_files(self):
+    def generate_files(self):
         """Generate word and pdf files
         """
         pythoncom.CoInitialize()
@@ -262,7 +258,7 @@ class MainApplication(tk.Frame):
         # Check if the paths are valid
         if not word_file_path or not excel_file_path or not folder_path:
             # Display an error message in the log area
-            self.writeLog("Please select valid files and folder.")
+            self.write_log("Please select valid files and folder.")
             return
 
         # Create a word directory if it does not exist
@@ -272,7 +268,7 @@ class MainApplication(tk.Frame):
             os.makedirs(pdf_folder_path)
 
         # Display a message in the log area that the generation is starting
-        self.writeLog(
+        self.write_log(
             f"Generating word files from {word_file_path} and {excel_file_path} into {folder_path}...")
 
         # Write your logic to generate word files using the word template and the excel information
@@ -286,7 +282,7 @@ class MainApplication(tk.Frame):
         num_word_errors = 0
         num_pdf_files = 0
         num_pdf_errors = 0
-        self.writeLog(f"\n------- Generation of files ----------")
+        self.write_log(f"\n------- Generation of files ----------")
         for index, row in df.iterrows():
             if self.stop_execution.get():
                 break
@@ -301,44 +297,45 @@ class MainApplication(tk.Frame):
             self.pb['value'] = 100*(index+1)/len(df)
             try:
                 doc.save(f"{word_folder_path}\{filename}.docx")
-                self.writeLog(f"File '{filename}.docx' correcty generated.")
+                self.write_log(f"File '{filename}.docx' correcty generated.")
                 num_word_files = num_word_files+1
-            except:
-                self.writeLog(f"Error generating file '{filename}'.")
+            except Exception:
+                self.write_log(f"Error generating file '{filename}'.")
                 num_word_errors = num_word_errors+1
             if (self.pdf_selected.get()):
                 try:
                     create_pdf_from_docx(
                         f"{word_folder_path}/{filename}.docx", f"{pdf_folder_path}/{filename}.pdf")
-                    self.writeLog(f"File '{filename}.pdf' correcty generated.")
+                    self.write_log(
+                        f"File '{filename}.pdf' correcty generated.")
                     num_pdf_files = num_pdf_files+1
-                except:
-                    self.writeLog(f"Error generating file '{filename}'.")
+                except Exception:
+                    self.write_log(f"Error generating file '{filename}'.")
                     num_pdf_errors = num_pdf_errors+1
 
         # Display a message in the log area that the generation is done
-        self.writeLog(f"\n------- Generation summary ----------")
+        self.write_log(f"\n------- Generation summary ----------")
         if (num_word_errors == 0 and num_pdf_errors == 0):
             self.folder_button_open.config(background='#a3f590')
         else:
             self.folder_button_open.config(background='yellow')
 
         if (num_word_files > 0):
-            self.writeLog(f"Number of word files generated: {num_word_files}")
+            self.write_log(f"Number of word files generated: {num_word_files}")
         if (num_word_errors > 0):
-            self.writeLog(
+            self.write_log(
                 f"Number of word files not generated because of errors: {num_word_files}")
         if (num_pdf_files > 0):
-            self.writeLog(f"Number of pdf files generated: {num_word_files}")
+            self.write_log(f"Number of pdf files generated: {num_word_files}")
         if (num_pdf_errors > 0):
-            self.writeLog(
+            self.write_log(
                 f"Number of pdf files not generated because of errors: {num_word_files}")
 
         # Hide stop button and show clear button
         self.stop_button.grid_remove()
         self.clear_button.grid()
 
-    def writeLog(self, text: str):
+    def write_log(self, text: str):
         """Write to log area
 
         Args:
@@ -362,7 +359,7 @@ class MainApplication(tk.Frame):
             df = pd.read_excel(file_path)
             return df.columns.tolist()
         except Exception as e:
-            self.writeLog(f"Error reading Excel file: {str(e)}")
+            self.write_log(f"Error reading Excel file: {str(e)}")
             return []
 
     def clear_screen(self):
@@ -383,21 +380,21 @@ class MainApplication(tk.Frame):
         if os.path.exists(folder):
             webbrowser.open(folder)
         else:
-            self.writeLog(f'Error: The folder "{folder}" does not exist.')
+            self.write_log(f'Error: The folder "{folder}" does not exist.')
 
     def open_excel_file(self):
         file = self.excel_file.get()
         if os.path.exists(file):
             webbrowser.open(file)
         else:
-            self.writeLog(f'Error: The excel file "{file}" does not exist.')
+            self.write_log(f'Error: The excel file "{file}" does not exist.')
 
     def open_word_file(self):
         file = self.word_file.get()
         if os.path.exists(file):
             webbrowser.open(file)
         else:
-            self.writeLog(f'Error: The word file "{file}" does not exist.')
+            self.write_log(f'Error: The word file "{file}" does not exist.')
 
     def stop_generation(self):
         self.stop_execution.set(True)
@@ -406,6 +403,7 @@ class MainApplication(tk.Frame):
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("Word File Generator v0.0.4")
+    root.resizable(False, False)
     app = MainApplication(root)
     app.pack(side="top", fill="both", expand=True, padx=10, pady=10)
     # Call the save_data function before exiting the program
