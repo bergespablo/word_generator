@@ -1,8 +1,7 @@
-output
+output*
 venv
 build
 backup
-dist
 .vscode
 input
 config.ini
